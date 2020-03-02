@@ -15,7 +15,7 @@ import (
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 
-	"git.lo/data-platform/objinsync/pkg/sync"
+	"github.com/scribd/objinsync/pkg/sync"
 )
 
 var (

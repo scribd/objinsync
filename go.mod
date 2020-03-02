@@ -1,4 +1,4 @@
-module git.lo/data-platform/objinsync
+module github.com/scribd/objinsync
 
 go 1.12
 
