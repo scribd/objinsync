@@ -27,9 +27,12 @@ jobs:
       run: make test
 
   release:
+    name: Release
     if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
 
-    - name: Release
+    - name: Run goreleaser
       uses: goreleaser/goreleaser-action@v1
       with:
         version: v0.127.0
