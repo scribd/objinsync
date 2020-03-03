@@ -21,7 +21,7 @@ import (
 var (
 	RunOnce            bool
 	InitialRunFinished atomic.Bool
-	HealthCheckAddr    = ":8087"
+	StatusAddr         = ":8087"
 
 	metricsSyncTime = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "objinsync",
@@ -46,7 +46,7 @@ func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 func serveHealthCheckEndpoints() {
 	http.HandleFunc("/health", healthCheckHandler)
 	http.Handle("/metrics", promhttp.Handler())
-	log.Fatal(http.ListenAndServe(HealthCheckAddr, nil))
+	log.Fatal(http.ListenAndServe(StatusAddr, nil))
 }
 
 func main() {
@@ -77,7 +77,7 @@ func main() {
 			}()
 		}
 	} else {
-		l.Warnf("SENTRY_DSN not found, skipped Sentry setup.")
+		l.Infof("SENTRY_DSN not found, sentry integration disabled.")
 	}
 
 	var rootCmd = &cobra.Command{
@@ -108,7 +108,8 @@ func main() {
 				if errMsg != "" {
 					sentry.CaptureMessage(errMsg)
 					sentry.Flush(time.Second * 5)
-					l.Fatalf(errMsg)
+					fmt.Println("ERROR: failed to pull objects from remote store:", errMsg)
+					os.Exit(1)
 				}
 
 				syncTime := time.Now().Sub(start)
@@ -122,7 +123,7 @@ func main() {
 			} else {
 				InitialRunFinished.Store(false)
 				go serveHealthCheckEndpoints()
-				l.Infof("Serving health check endpoints at: %s.", HealthCheckAddr)
+				l.Infof("Serving health check endpoints at: %s.", StatusAddr)
 				l.Infof("Pulling from %s to %s every %v...", remoteUri, localDir, interval)
 				ticker := time.NewTicker(interval)
 				pull()
@@ -137,6 +138,7 @@ func main() {
 		},
 	}
 	pullCmd.PersistentFlags().BoolVarP(&RunOnce, "once", "o", false, "run action once and then exit.")
+	pullCmd.PersistentFlags().StringVarP(&StatusAddr, "status-addr", "s", ":8087", "binding address for status endpoint.")
 
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.Execute()
