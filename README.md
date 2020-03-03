@@ -1,6 +1,8 @@
 ObjInSync
 =========
 
+![CI/CD](https://github.com/scribd/objinsync/workflows/CI/CD/badge.svg)
+
 Daemon to continuously synchronize a directory from remote object store to a local directory.
 
 NOTE: it automatically ignores `__pycache__` directory.
