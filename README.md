@@ -47,3 +47,5 @@ Run from source
 ```bash
 AWS_REGION=us-east-2 go run main.go pull s3://qph-test-airflow-airflow-code/airflow_home/dags ./dags
 ```
+
+To cut a release, push tag to remote with format of `vx.x.x`.
