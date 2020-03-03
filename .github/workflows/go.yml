@@ -23,3 +23,12 @@ jobs:
 
     - name: Run test
       run: make test
+
+    - name: Release
+      uses: goreleaser/goreleaser-action@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        version: v0.127.0
+        args: release --rm-dist
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
