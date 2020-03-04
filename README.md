@@ -19,7 +19,7 @@ When running in daemon mode (without `--once` flag), a healthcheck endpoint is
 served at `:8087/health` and a prometheus metrics endponit is served at
 `:8087/metrics`. You can use `--status-addr` to override the binding address.
 
-Objinsync also comes with builtin Sentry integraiton. To enable it, set the
+Objinsync also comes with builtin Sentry integration. To enable it, set the
 `SENTRY_DSN` environment variable.
 
 
