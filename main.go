@@ -19,9 +19,10 @@ import (
 )
 
 var (
-	RunOnce            bool
 	InitialRunFinished atomic.Bool
-	StatusAddr         = ":8087"
+	FlagRunOnce        bool
+	FlagStatusAddr     = ":8087"
+	FlagExclude        []string
 
 	metricsSyncTime = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "objinsync",
@@ -46,7 +47,7 @@ func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 func serveHealthCheckEndpoints() {
 	http.HandleFunc("/health", healthCheckHandler)
 	http.Handle("/metrics", promhttp.Handler())
-	log.Fatal(http.ListenAndServe(StatusAddr, nil))
+	log.Fatal(http.ListenAndServe(FlagStatusAddr, nil))
 }
 
 func main() {
@@ -100,6 +101,12 @@ func main() {
 			}
 
 			puller := sync.NewPuller()
+			if FlagExclude != nil {
+				for _, exclude := range FlagExclude {
+					puller.AddExcludePattern(exclude)
+				}
+			}
+
 			pull := func() {
 				start := time.Now()
 				l.Info("Pull started.")
@@ -117,13 +124,13 @@ func main() {
 				l.Infof("Pull finished in %v seconds.", syncTime)
 			}
 
-			if RunOnce {
+			if FlagRunOnce {
 				l.Infof("Pulling from %s to %s...", remoteUri, localDir)
 				pull()
 			} else {
 				InitialRunFinished.Store(false)
 				go serveHealthCheckEndpoints()
-				l.Infof("Serving health check endpoints at: %s.", StatusAddr)
+				l.Infof("Serving health check endpoints at: %s.", FlagStatusAddr)
 				l.Infof("Pulling from %s to %s every %v...", remoteUri, localDir, interval)
 				ticker := time.NewTicker(interval)
 				pull()
@@ -137,8 +144,13 @@ func main() {
 			}
 		},
 	}
-	pullCmd.PersistentFlags().BoolVarP(&RunOnce, "once", "o", false, "run action once and then exit.")
-	pullCmd.PersistentFlags().StringVarP(&StatusAddr, "status-addr", "s", ":8087", "binding address for status endpoint.")
+
+	pullCmd.PersistentFlags().BoolVarP(
+		&FlagRunOnce, "once", "o", false, "run action once and then exit")
+	pullCmd.PersistentFlags().StringVarP(
+		&FlagStatusAddr, "status-addr", "s", ":8087", "binding address for status endpoint")
+	pullCmd.PersistentFlags().StringSliceVarP(
+		&FlagExclude, "exclude", "e", nil, "exclude files matching given pattern, see https://github.com/bmatcuk/doublestar#patterns for pattern spec")
 
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.Execute()

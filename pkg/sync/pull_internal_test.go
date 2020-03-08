@@ -44,41 +44,6 @@ func TestSkipParentDir(t *testing.T) {
 	assert.Equal(t, 0, cnt)
 }
 
-func TestWalkAndDeleteEmptyDir(t *testing.T) {
-	dir, err := ioutil.TempDir("", "")
-	assert.Equal(t, nil, err)
-	defer os.RemoveAll(dir)
-
-	emptyDir := filepath.Join(dir, "empty")
-	os.MkdirAll(emptyDir, os.ModePerm)
-
-	nonEmptyDir := filepath.Join(dir, "bar")
-	os.MkdirAll(nonEmptyDir, os.ModePerm)
-	fileA := filepath.Join(nonEmptyDir, "a.go")
-	err = ioutil.WriteFile(fileA, []byte("test"), 0644)
-	assert.Equal(t, nil, err)
-
-	fileB := filepath.Join(dir, "b.file")
-	err = ioutil.WriteFile(fileB, []byte("test2"), 0644)
-	assert.Equal(t, nil, err)
-
-	files, err := listAndPruneDir(dir)
-	assert.Equal(t, nil, err)
-
-	for _, f := range []string{fileA, fileB} {
-		// make sure files are not delted
-		_, err = os.Stat(f)
-		assert.Equal(t, nil, err)
-
-		_, hasF := files[f]
-		assert.True(t, hasF)
-	}
-
-	// make sure empty dirs are deleted
-	_, err = os.Stat(emptyDir)
-	assert.NotEqual(t, nil, err)
-}
-
 func TestDeleteStaleFile(t *testing.T) {
 	dir, err := ioutil.TempDir("", "")
 	nonEmptyDir := filepath.Join(dir, "bar")
@@ -99,7 +64,7 @@ func TestDeleteStaleFile(t *testing.T) {
 
 	p := NewPuller()
 	p.taskQueue = make(chan DownloadTask, 10)
-	p.filesToDelete, err = listAndPruneDir(dir)
+	p.filesToDelete, err = listAndPruneDir(dir, nil)
 	assert.Equal(t, nil, err)
 
 	cnt := 0
@@ -190,6 +155,59 @@ func TestSkipObjectsWithoutChange(t *testing.T) {
 	assert.Equal(t, 1, p.filePulledCnt)
 }
 
+func TestSkipExcludedObjects(t *testing.T) {
+	p := NewPuller()
+	p.taskQueue = make(chan DownloadTask, 10)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		// drain queue
+		for _ = range p.taskQueue {
+		}
+		wg.Done()
+	}()
+
+	p.AddExcludePattern("airflow.cfg")
+	p.AddExcludePattern("webserver_config.py")
+	p.AddExcludePattern("config/**")
+	p.handlePageList(
+		&s3.ListObjectsV2Output{
+			Contents: []*s3.Object{
+				&s3.Object{
+					Key:  aws.String("home/dags/b.file"),
+					ETag: aws.String("1"),
+				},
+				&s3.Object{
+					Key:  aws.String("home/airflow.cfg"),
+					ETag: aws.String("2"),
+				},
+				&s3.Object{
+					Key:  aws.String("home/config/a.file"),
+					ETag: aws.String("3"),
+				},
+				&s3.Object{
+					Key:  aws.String("home/config/subdir/a.file"),
+					ETag: aws.String("4"),
+				},
+				&s3.Object{
+					Key:  aws.String("home/webserver_config.py"),
+					ETag: aws.String("5"),
+				},
+			},
+		},
+		false,
+		"foo",
+		"home",
+		"bar",
+	)
+	close(p.taskQueue)
+	wg.Wait()
+
+	assert.Equal(t, 1, p.fileListedCnt)
+	assert.Equal(t, 1, p.filePulledCnt)
+}
+
 func TestSkipDirectories(t *testing.T) {
 	p := NewPuller()
 	p.taskQueue = make(chan DownloadTask, 10)
@@ -226,30 +244,6 @@ func TestSkipDirectories(t *testing.T) {
 
 	assert.Equal(t, 1, p.fileListedCnt)
 	assert.Equal(t, 1, p.filePulledCnt)
-}
-
-func TestWalkAndIgnorePycacheDir(t *testing.T) {
-	dir, err := ioutil.TempDir("", "")
-	assert.Equal(t, nil, err)
-	defer os.RemoveAll(dir)
-
-	emptyDir := filepath.Join(dir, "__pycache__")
-	os.MkdirAll(emptyDir, os.ModePerm)
-
-	nonEmptyDir := filepath.Join(dir, "bar")
-	os.MkdirAll(nonEmptyDir, os.ModePerm)
-	cacheDir := filepath.Join(nonEmptyDir, "__pycache__")
-	os.MkdirAll(cacheDir, os.ModePerm)
-	pycFile := filepath.Join(cacheDir, "foo.pyc")
-	err = ioutil.WriteFile(pycFile, []byte("test2"), 0644)
-
-	files, err := listAndPruneDir(dir)
-	assert.Equal(t, nil, err)
-	assert.Equal(t, 0, len(files))
-
-	// make sure pycache dir is ignored
-	_, err = os.Stat(emptyDir)
-	assert.Equal(t, nil, err)
 }
 
 type MockDownloader struct{}

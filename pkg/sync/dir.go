@@ -3,12 +3,18 @@ package sync
 import (
 	"os"
 	"path/filepath"
-	"strings"
+
+	"github.com/bmatcuk/doublestar"
+	"go.uber.org/zap"
 )
 
-// file list contains absolute path
+// This function finds all files in a given directory and return them in a map.
+// It also purges empty directories.
+//
+// file map contains absolute path
 // it won't include directories in the returned map
-func listAndPruneDir(dirname string) (map[string]bool, error) {
+func listAndPruneDir(dirname string, exclude []string) (map[string]bool, error) {
+	l := zap.S()
 	files := make(map[string]bool)
 	dirsToDelete := make(map[string]bool)
 
@@ -16,9 +22,29 @@ func listAndPruneDir(dirname string) (map[string]bool, error) {
 		if err != nil {
 			return err
 		}
+
+		// ignore file that matches exclude rules
+		shouldSkip := false
+		relPath, err := filepath.Rel(dirname, path)
+		if err != nil {
+			l.Errorf("Got invalid path from filepath.Walk: %s, err: %s", path, err)
+			shouldSkip = true
+		} else {
+			if info.IsDir() {
+				// this is so that pattern `foo/**` also matches `foo`
+				relPath += "/"
+			}
+			for _, pattern := range exclude {
+				matched, _ := doublestar.Match(pattern, relPath)
+				if matched {
+					shouldSkip = true
+					break
+				}
+			}
+		}
+
 		if info.IsDir() {
-			if strings.Contains(path, "__pycache__") {
-				// ignore python cache files for sync
+			if shouldSkip {
 				return filepath.SkipDir
 			}
 			// don't delete root even if it's empty
@@ -26,6 +52,9 @@ func listAndPruneDir(dirname string) (map[string]bool, error) {
 				dirsToDelete[path] = true
 			}
 		} else {
+			if shouldSkip {
+				return nil
+			}
 			parentDir := filepath.Dir(path)
 			if _, ok := dirsToDelete[parentDir]; ok {
 				// mark dir as not empty

@@ -5,14 +5,12 @@ ObjInSync
 
 Daemon to continuously synchronize a directory from remote object store to a local directory.
 
-NOTE: it automatically ignores `__pycache__` directory.
-
 
 Usage
 -----
 
 ```bash
-objinsync pull s3://bucket/keyprefix ./localdir
+objinsync pull --exclude '**/__pycache__/**' s3://bucket/keyprefix ./localdir
 ```
 
 When running in daemon mode (without `--once` flag), a healthcheck endpoint is

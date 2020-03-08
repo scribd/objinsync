@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/bmatcuk/doublestar"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
@@ -118,7 +119,13 @@ func (self *Puller) downloadHandler(task DownloadTask, downloader GenericDownloa
 	defer self.uidLock.Unlock()
 }
 
-func (self *Puller) handlePageList(page *s3.ListObjectsV2Output, lastPage bool, bucket string, remoteDirPath string, localDir string) bool {
+func (self *Puller) handlePageList(
+	page *s3.ListObjectsV2Output,
+	lastPage bool,
+	bucket string,
+	remoteDirPath string,
+	localDir string,
+) bool {
 	l := zap.S()
 
 	l.Infof("Object list page contains %d objects.", len(page.Contents))
@@ -137,6 +144,19 @@ func (self *Puller) handlePageList(page *s3.ListObjectsV2Output, lastPage bool, 
 		relPath, err := filepath.Rel(remoteDirPath, key)
 		if err != nil {
 			l.Errorf("skipped %s, %s is not the parent of %s!", uri, remoteDirPath, key)
+			continue
+		}
+		// ignore file that matches exclude rules
+		shouldSkip := false
+		for _, pattern := range self.exclude {
+			matched, _ := doublestar.Match(pattern, relPath)
+			if matched {
+				l.Debugf("skipped %s due to exclude pattern: %s", uri, pattern)
+				shouldSkip = true
+				break
+			}
+		}
+		if shouldSkip {
 			continue
 		}
 
@@ -172,6 +192,7 @@ func (self *Puller) handlePageList(page *s3.ListObjectsV2Output, lastPage bool, 
 }
 
 type Puller struct {
+	exclude     []string
 	workerCnt   int
 	uidCache    map[string]string
 	uidLock     *sync.Mutex
@@ -192,10 +213,14 @@ type Puller struct {
 	filePulledCnt int
 }
 
+func (self *Puller) AddExcludePattern(pattern string) {
+	self.exclude = append(self.exclude, pattern)
+}
+
 func (self *Puller) Pull(remoteUri string, localDir string) string {
 	l := zap.S()
 
-	filesToDelete, err := listAndPruneDir(localDir)
+	filesToDelete, err := listAndPruneDir(localDir, self.exclude)
 	if err != nil {
 		return fmt.Sprintf("Failed to list and prune local dir %s: %v", localDir, err)
 	}
