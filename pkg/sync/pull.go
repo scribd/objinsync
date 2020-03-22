@@ -3,6 +3,7 @@ package sync
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -98,19 +99,23 @@ func (self *Puller) downloadHandler(task DownloadTask, downloader GenericDownloa
 	}
 
 	// create file
-	file, err := os.OpenFile(task.LocalPath, os.O_WRONLY|os.O_CREATE, 0666)
+	tmpfile, err := ioutil.TempFile(os.TempDir(), "objinsync-download-")
 	if err != nil {
-		self.errMsgQueue <- fmt.Sprintf("Failed to create file %s for download: %v", task.LocalPath, err)
+		self.errMsgQueue <- fmt.Sprintf("Failed to create file %s for download: %v", tmpfile.Name(), err)
 		return
 	}
-	defer file.Close()
-	file.Truncate(0)
-	file.Seek(0, 0)
 
-	downloader.Download(file, &s3.GetObjectInput{
+	downloader.Download(tmpfile, &s3.GetObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 	})
+
+	// use rename to make file update atomic
+	err = os.Rename(tmpfile.Name(), task.LocalPath)
+	if err != nil {
+		self.errMsgQueue <- fmt.Sprintf("Failed to replace file %s for download: %v", task.LocalPath, err)
+		return
+	}
 
 	// update cache with new object ID
 	self.uidLock.Lock()
