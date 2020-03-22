@@ -104,6 +104,7 @@ func (self *Puller) downloadHandler(task DownloadTask, downloader GenericDownloa
 		self.errMsgQueue <- fmt.Sprintf("Failed to create file %s for download: %v", tmpfile.Name(), err)
 		return
 	}
+	defer tmpfile.Close()
 
 	downloader.Download(tmpfile, &s3.GetObjectInput{
 		Bucket: aws.String(bucket),
