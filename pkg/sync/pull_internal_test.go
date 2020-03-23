@@ -119,7 +119,7 @@ func TestDeleteStaleFile(t *testing.T) {
 func TestSkipObjectsWithoutChange(t *testing.T) {
 	p := NewPuller()
 	p.taskQueue = make(chan DownloadTask, 10)
-	p.uidCache["s3://foo/home/dags/b.file"] = "1"
+	p.uidCache["b.file"] = "\"1\""
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -135,11 +135,11 @@ func TestSkipObjectsWithoutChange(t *testing.T) {
 			Contents: []*s3.Object{
 				&s3.Object{
 					Key:  aws.String("home/dags/b.file"),
-					ETag: aws.String("1"),
+					ETag: aws.String("\"1\""),
 				},
 				&s3.Object{
 					Key:  aws.String("home/dags/bar/a.go"),
-					ETag: aws.String("1"),
+					ETag: aws.String("\"1\""),
 				},
 			},
 		},
@@ -168,31 +168,29 @@ func TestSkipExcludedObjects(t *testing.T) {
 		wg.Done()
 	}()
 
-	p.AddExcludePattern("airflow.cfg")
-	p.AddExcludePattern("webserver_config.py")
-	p.AddExcludePattern("config/**")
+	p.AddExcludePatterns([]string{"airflow.cfg", "webserver_config.py", "config/**"})
 	p.handlePageList(
 		&s3.ListObjectsV2Output{
 			Contents: []*s3.Object{
 				&s3.Object{
 					Key:  aws.String("home/dags/b.file"),
-					ETag: aws.String("1"),
+					ETag: aws.String("\"1\""),
 				},
 				&s3.Object{
 					Key:  aws.String("home/airflow.cfg"),
-					ETag: aws.String("2"),
+					ETag: aws.String("\"2\""),
 				},
 				&s3.Object{
 					Key:  aws.String("home/config/a.file"),
-					ETag: aws.String("3"),
+					ETag: aws.String("\"3\""),
 				},
 				&s3.Object{
 					Key:  aws.String("home/config/subdir/a.file"),
-					ETag: aws.String("4"),
+					ETag: aws.String("\"4\""),
 				},
 				&s3.Object{
 					Key:  aws.String("home/webserver_config.py"),
-					ETag: aws.String("5"),
+					ETag: aws.String("\"5\""),
 				},
 			},
 		},

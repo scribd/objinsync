@@ -1,6 +1,8 @@
 package sync
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -56,8 +58,11 @@ type DownloadTask struct {
 	Uri       string
 	LocalPath string
 	Uid       string
+	// uid key is common suffix between local path and remote uri
+	UidKey string
 }
 
+// parse bucket and key out of remote object URI
 func parseObjectUri(uri string) (string, string, error) {
 	parts := strings.SplitN(uri, "//", 2)
 	if len(parts) != 2 {
@@ -71,6 +76,27 @@ func parseObjectUri(uri string) (string, string, error) {
 	}
 
 	return pathParts[0], pathParts[1], nil
+}
+
+func uidKeyFromLocalPath(localDir string, localPath string) (string, error) {
+	return filepath.Rel(localDir, localPath)
+}
+
+func uidFromLocalPath(localPath string) (string, error) {
+	f, err := os.Open(localPath)
+	if err != nil {
+		return "", fmt.Errorf("Invalid file path for checksum calculation: %s, err: %s", localPath, err)
+	}
+	defer f.Close()
+
+	h := md5.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", fmt.Errorf("Failed to calculate checksum for file: %s, err: %s", localPath, err)
+	}
+
+	uid := hex.EncodeToString(h.Sum(nil))
+	// AWS S3 ETag is a quoted hex string
+	return fmt.Sprintf("\"%s\"", uid), nil
 }
 
 func (self *Puller) downloadHandler(task DownloadTask, downloader GenericDownloader) {
@@ -120,9 +146,19 @@ func (self *Puller) downloadHandler(task DownloadTask, downloader GenericDownloa
 
 	// update cache with new object ID
 	self.uidLock.Lock()
-	l.Debugw("Updaing uid cache", "key", task.Uri, "val", task.Uid)
-	self.uidCache[task.Uri] = task.Uid
-	defer self.uidLock.Unlock()
+	l.Debugw("Updaing uid cache", "key", task.UidKey, "val", task.Uid)
+	self.uidCache[task.UidKey] = task.Uid
+	self.uidLock.Unlock()
+}
+
+func (self *Puller) isPathExcluded(path string) bool {
+	for _, pattern := range self.exclude {
+		matched, _ := doublestar.Match(pattern, path)
+		if matched {
+			return true
+		}
+	}
+	return false
 }
 
 func (self *Puller) handlePageList(
@@ -153,16 +189,9 @@ func (self *Puller) handlePageList(
 			continue
 		}
 		// ignore file that matches exclude rules
-		shouldSkip := false
-		for _, pattern := range self.exclude {
-			matched, _ := doublestar.Match(pattern, relPath)
-			if matched {
-				l.Debugf("skipped %s due to exclude pattern: %s", uri, pattern)
-				shouldSkip = true
-				break
-			}
-		}
+		shouldSkip := self.isPathExcluded(relPath)
 		if shouldSkip {
+			l.Debugf("skipped %s due to exclude pattern", uri)
 			continue
 		}
 
@@ -178,10 +207,11 @@ func (self *Puller) handlePageList(
 
 		self.fileListedCnt += 1
 
+		uidKey := relPath
 		self.uidLock.Lock()
-		oldUid, ok := self.uidCache[uri]
+		oldUid, ok := self.uidCache[uidKey]
 		self.uidLock.Unlock()
-		l.Debugf("Comparing object UID: %s <> %s = %v", oldUid, newUid, oldUid == newUid)
+		l.Debugf("Comparing object UID: %s <> %s", oldUid, newUid)
 		if ok && oldUid == newUid {
 			// skip update if uid is the same
 			continue
@@ -192,6 +222,7 @@ func (self *Puller) handlePageList(
 			Uri:       uri,
 			LocalPath: localPath,
 			Uid:       newUid,
+			UidKey:    uidKey,
 		}
 	}
 	return true
@@ -219,8 +250,10 @@ type Puller struct {
 	filePulledCnt int
 }
 
-func (self *Puller) AddExcludePattern(pattern string) {
-	self.exclude = append(self.exclude, pattern)
+func (self *Puller) AddExcludePatterns(patterns []string) {
+	for _, pattern := range patterns {
+		self.exclude = append(self.exclude, pattern)
+	}
 }
 
 func (self *Puller) Pull(remoteUri string, localDir string) string {
@@ -318,6 +351,76 @@ func (self *Puller) Pull(remoteUri string, localDir string) string {
 		}
 
 		return pullErrMsg
+	}
+}
+
+func (self *Puller) PopulateChecksum(localDir string) {
+	l := zap.S()
+
+	setFileChecksum := func(path string) {
+		f, err := os.Open(path)
+		if err != nil {
+			l.Errorf("Invalid file path for checksum calculation: %s, err: %s", path, err)
+		}
+		defer f.Close()
+
+		h := md5.New()
+		if _, err := io.Copy(h, f); err != nil {
+			l.Errorf("Failed to calculate checksum for file: %s, err: %s", path, err)
+		}
+
+		uidKey, err := uidKeyFromLocalPath(localDir, path)
+		if err != nil {
+			l.Errorf("Failed to calculate uidKey for file: %s under dir: %s, err: %s", path, localDir, err)
+			return
+		}
+
+		uid, err := uidFromLocalPath(path)
+		if err != nil {
+			l.Errorf("Failed to calculate UID: %s", err)
+			return
+		}
+
+		self.uidLock.Lock()
+		self.uidCache[uidKey] = uid
+		self.uidLock.Unlock()
+	}
+
+	err := filepath.Walk(localDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// ignore file that matches exclude rules
+		shouldSkip := false
+		relPath, err := filepath.Rel(localDir, path)
+		if err != nil {
+			l.Errorf("Got invalid path from filepath.Walk: %s, err: %s", path, err)
+			shouldSkip = true
+		} else {
+			if info.IsDir() {
+				// this is so that pattern `foo/**` also matches `foo`
+				relPath += "/"
+			}
+			shouldSkip = self.isPathExcluded(relPath)
+		}
+
+		if info.IsDir() {
+			if shouldSkip {
+				return filepath.SkipDir
+			}
+		} else {
+			if shouldSkip {
+				return nil
+			}
+
+			setFileChecksum(path)
+		}
+		return nil
+	})
+
+	if err != nil {
+		l.Errorf("Failed to walk directory for populating file checksum, err: %s", err)
 	}
 }
 

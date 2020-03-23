@@ -23,6 +23,7 @@ var (
 	FlagRunOnce        bool
 	FlagStatusAddr     = ":8087"
 	FlagExclude        []string
+	FlagScratch        bool
 
 	metricsSyncTime = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "objinsync",
@@ -102,9 +103,10 @@ func main() {
 
 			puller := sync.NewPuller()
 			if FlagExclude != nil {
-				for _, exclude := range FlagExclude {
-					puller.AddExcludePattern(exclude)
-				}
+				puller.AddExcludePatterns(FlagExclude)
+			}
+			if !FlagScratch {
+				puller.PopulateChecksum(localDir)
 			}
 
 			pull := func() {
@@ -151,6 +153,13 @@ func main() {
 		&FlagStatusAddr, "status-addr", "s", ":8087", "binding address for status endpoint")
 	pullCmd.PersistentFlags().StringSliceVarP(
 		&FlagExclude, "exclude", "e", nil, "exclude files matching given pattern, see https://github.com/bmatcuk/doublestar#patterns for pattern spec")
+	pullCmd.PersistentFlags().BoolVarP(
+		&FlagScratch,
+		"scratch",
+		"",
+		false,
+		"skip checksums calculation and override all files during the initial sync",
+	)
 
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.Execute()
