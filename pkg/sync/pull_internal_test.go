@@ -15,7 +15,13 @@ import (
 )
 
 func TestSkipParentDir(t *testing.T) {
-	p := NewPuller()
+	dir, err := ioutil.TempDir("", "")
+	assert.Equal(t, nil, err)
+	defer os.RemoveAll(dir)
+	p, err := NewPuller("s3://foo/home", dir)
+	assert.Equal(t, nil, err)
+	p.SetupWorkingDir()
+
 	p.taskQueue = make(chan DownloadTask, 10)
 	p.handlePageList(
 		&s3.ListObjectsV2Output{
@@ -33,7 +39,7 @@ func TestSkipParentDir(t *testing.T) {
 		false,
 		"foo",
 		"home",
-		"abc",
+		dir,
 	)
 	close(p.taskQueue)
 
@@ -46,6 +52,7 @@ func TestSkipParentDir(t *testing.T) {
 
 func TestDeleteStaleFile(t *testing.T) {
 	dir, err := ioutil.TempDir("", "")
+	defer os.RemoveAll(dir)
 	nonEmptyDir := filepath.Join(dir, "bar")
 	os.MkdirAll(nonEmptyDir, os.ModePerm)
 	fileA := filepath.Join(nonEmptyDir, "a.go")
@@ -62,7 +69,9 @@ func TestDeleteStaleFile(t *testing.T) {
 	err = ioutil.WriteFile(deletedFileB, []byte("test2"), 0644)
 	assert.Equal(t, nil, err)
 
-	p := NewPuller()
+	p, err := NewPuller("s3://foo/home/dags", dir)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, nil, p.SetupWorkingDir())
 	p.taskQueue = make(chan DownloadTask, 10)
 	p.filesToDelete, err = listAndPruneDir(dir, nil)
 	assert.Equal(t, nil, err)
@@ -117,7 +126,12 @@ func TestDeleteStaleFile(t *testing.T) {
 }
 
 func TestSkipObjectsWithoutChange(t *testing.T) {
-	p := NewPuller()
+	dir, err := ioutil.TempDir("", "")
+	assert.Equal(t, nil, err)
+	defer os.RemoveAll(dir)
+	p, err := NewPuller("s3://foo/home/dags", dir)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, nil, p.SetupWorkingDir())
 	p.taskQueue = make(chan DownloadTask, 10)
 	p.uidCache["b.file"] = "\"1\""
 
@@ -146,7 +160,7 @@ func TestSkipObjectsWithoutChange(t *testing.T) {
 		false,
 		"foo",
 		"home/dags",
-		"bar",
+		dir,
 	)
 	close(p.taskQueue)
 	wg.Wait()
@@ -156,7 +170,12 @@ func TestSkipObjectsWithoutChange(t *testing.T) {
 }
 
 func TestSkipExcludedObjects(t *testing.T) {
-	p := NewPuller()
+	dir, err := ioutil.TempDir("", "")
+	assert.Equal(t, nil, err)
+	defer os.RemoveAll(dir)
+	p, err := NewPuller("s3://foo/home", dir)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, nil, p.SetupWorkingDir())
 	p.taskQueue = make(chan DownloadTask, 10)
 
 	var wg sync.WaitGroup
@@ -197,7 +216,7 @@ func TestSkipExcludedObjects(t *testing.T) {
 		false,
 		"foo",
 		"home",
-		"bar",
+		dir,
 	)
 	close(p.taskQueue)
 	wg.Wait()
@@ -207,7 +226,12 @@ func TestSkipExcludedObjects(t *testing.T) {
 }
 
 func TestSkipDirectories(t *testing.T) {
-	p := NewPuller()
+	dir, err := ioutil.TempDir("", "")
+	assert.Equal(t, nil, err)
+	defer os.RemoveAll(dir)
+	p, err := NewPuller("s3://foo/home/dags", dir)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, nil, p.SetupWorkingDir())
 	p.taskQueue = make(chan DownloadTask, 10)
 
 	var wg sync.WaitGroup
@@ -235,7 +259,7 @@ func TestSkipDirectories(t *testing.T) {
 		false,
 		"foo",
 		"home/dags",
-		"bar",
+		dir,
 	)
 	close(p.taskQueue)
 	wg.Wait()
@@ -257,8 +281,10 @@ func TestNestedPathDownload(t *testing.T) {
 
 	mockDownloader := MockDownloader{}
 
-	p := NewPuller()
+	p, err := NewPuller("s3://abc/efg", dir)
+	assert.Equal(t, nil, err)
 	p.errMsgQueue = make(chan string, 30)
+	assert.Equal(t, nil, p.SetupWorkingDir())
 
 	p.downloadHandler(
 		DownloadTask{

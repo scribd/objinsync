@@ -99,6 +99,32 @@ func uidFromLocalPath(localPath string) (string, error) {
 	return fmt.Sprintf("\"%s\"", uid), nil
 }
 
+type Puller struct {
+	RemoteUri string
+	LocalDir  string
+
+	workingDir  string
+	exclude     []string
+	workerCnt   int
+	uidCache    map[string]string
+	uidLock     *sync.Mutex
+	taskQueue   chan DownloadTask
+	errMsgQueue chan string
+	// Here is how filesToDelete is being used:
+	//
+	// 1. before each pull action, we populate filesToDelete with all files
+	// (without dirs) from local target directory. During this process, we also
+	// delete local empty directories.
+	//
+	// 2. we list S3 bucket, for any file in the bucket, we remove related
+	// entry from the delete list
+	//
+	// 3. at the end of the pull, we delete files from the list
+	filesToDelete map[string]bool
+	fileListedCnt int
+	filePulledCnt int
+}
+
 func (self *Puller) downloadHandler(task DownloadTask, downloader GenericDownloader) {
 	l := zap.S()
 
@@ -125,9 +151,9 @@ func (self *Puller) downloadHandler(task DownloadTask, downloader GenericDownloa
 	}
 
 	// create file
-	tmpfile, err := ioutil.TempFile(os.TempDir(), "objinsync-download-")
+	tmpfile, err := ioutil.TempFile(self.workingDir, filepath.Base(task.LocalPath))
 	if err != nil {
-		self.errMsgQueue <- fmt.Sprintf("Failed to create file %s for download: %v", tmpfile.Name(), err)
+		self.errMsgQueue <- fmt.Sprintf("Failed to create file for download: %v", err)
 		return
 	}
 	defer tmpfile.Close()
@@ -228,40 +254,31 @@ func (self *Puller) handlePageList(
 	return true
 }
 
-type Puller struct {
-	exclude     []string
-	workerCnt   int
-	uidCache    map[string]string
-	uidLock     *sync.Mutex
-	taskQueue   chan DownloadTask
-	errMsgQueue chan string
-	// Here is how filesToDelete is being used:
-	//
-	// 1. before each pull action, we populate filesToDelete with all files
-	// (without dirs) from local target directory. During this process, we also
-	// delete local empty directories.
-	//
-	// 2. we list S3 bucket, for any file in the bucket, we remove related
-	// entry from the delete list
-	//
-	// 3. at the end of the pull, we delete files from the list
-	filesToDelete map[string]bool
-	fileListedCnt int
-	filePulledCnt int
-}
-
 func (self *Puller) AddExcludePatterns(patterns []string) {
 	for _, pattern := range patterns {
 		self.exclude = append(self.exclude, pattern)
 	}
 }
 
-func (self *Puller) Pull(remoteUri string, localDir string) string {
+func (self *Puller) SetupWorkingDir() error {
+	// create temporary working directory to hold downloads for atomic rename
+	// TmpDir won't work because it could be in a different partition, which
+	// will lead to invalid cross-device link error
+	if _, err := os.Stat(self.workingDir); os.IsNotExist(err) {
+		err = os.MkdirAll(self.workingDir, os.ModePerm)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (self *Puller) Pull() string {
 	l := zap.S()
 
-	filesToDelete, err := listAndPruneDir(localDir, self.exclude)
+	filesToDelete, err := listAndPruneDir(self.LocalDir, self.exclude)
 	if err != nil {
-		return fmt.Sprintf("Failed to list and prune local dir %s: %v", localDir, err)
+		return fmt.Sprintf("Failed to list and prune local dir %s: %v", self.LocalDir, err)
 	}
 	// handlePageList method will remove files existed in remote source from this list
 	self.filesToDelete = filesToDelete
@@ -269,9 +286,9 @@ func (self *Puller) Pull(remoteUri string, localDir string) string {
 		self.filesToDelete = nil
 	}()
 
-	bucket, remoteDirPath, err := parseObjectUri(remoteUri)
+	bucket, remoteDirPath, err := parseObjectUri(self.RemoteUri)
 	if err != nil {
-		return fmt.Sprintf("Invalid remote uri %s: %v", remoteUri, err)
+		return fmt.Sprintf("Invalid remote uri %s: %v", self.RemoteUri, err)
 	}
 
 	self.taskQueue = make(chan DownloadTask, 30)
@@ -291,6 +308,11 @@ func (self *Puller) Pull(remoteUri string, localDir string) string {
 
 	svc := s3.New(sess, aws.NewConfig().WithRegion(region))
 	downloader := s3manager.NewDownloaderWithClient(svc)
+
+	if err := self.SetupWorkingDir(); err != nil {
+		return fmt.Sprintf("Failed to create working directory %s: %v", self.workingDir, err)
+	}
+	defer os.RemoveAll(self.workingDir) // purge working dir when downlaods are done
 
 	// spawn worker goroutines
 	var wg sync.WaitGroup
@@ -329,7 +351,7 @@ func (self *Puller) Pull(remoteUri string, localDir string) string {
 
 	err = svc.ListObjectsV2Pages(listParams,
 		func(page *s3.ListObjectsV2Output, lastPage bool) bool {
-			return self.handlePageList(page, lastPage, bucket, remoteDirPath, localDir)
+			return self.handlePageList(page, lastPage, bucket, remoteDirPath, self.LocalDir)
 		})
 	close(self.taskQueue)
 	wg.Wait()
@@ -339,7 +361,7 @@ func (self *Puller) Pull(remoteUri string, localDir string) string {
 	metricsFilePulled.Set(float64(self.filePulledCnt))
 
 	if err != nil {
-		return fmt.Sprintf("Failed to list remote uri %s: %v", remoteUri, err)
+		return fmt.Sprintf("Failed to list remote uri %s: %v", self.RemoteUri, err)
 	} else {
 		errMsgWg.Wait()
 
@@ -354,7 +376,7 @@ func (self *Puller) Pull(remoteUri string, localDir string) string {
 	}
 }
 
-func (self *Puller) PopulateChecksum(localDir string) {
+func (self *Puller) PopulateChecksum() {
 	l := zap.S()
 
 	setFileChecksum := func(path string) {
@@ -369,9 +391,9 @@ func (self *Puller) PopulateChecksum(localDir string) {
 			l.Errorf("Failed to calculate checksum for file: %s, err: %s", path, err)
 		}
 
-		uidKey, err := uidKeyFromLocalPath(localDir, path)
+		uidKey, err := uidKeyFromLocalPath(self.LocalDir, path)
 		if err != nil {
-			l.Errorf("Failed to calculate uidKey for file: %s under dir: %s, err: %s", path, localDir, err)
+			l.Errorf("Failed to calculate uidKey for file: %s under dir: %s, err: %s", path, self.LocalDir, err)
 			return
 		}
 
@@ -386,14 +408,14 @@ func (self *Puller) PopulateChecksum(localDir string) {
 		self.uidLock.Unlock()
 	}
 
-	err := filepath.Walk(localDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(self.LocalDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
 		// ignore file that matches exclude rules
 		shouldSkip := false
-		relPath, err := filepath.Rel(localDir, path)
+		relPath, err := filepath.Rel(self.LocalDir, path)
 		if err != nil {
 			l.Errorf("Got invalid path from filepath.Walk: %s, err: %s", path, err)
 			shouldSkip = true
@@ -424,10 +446,17 @@ func (self *Puller) PopulateChecksum(localDir string) {
 	}
 }
 
-func NewPuller() *Puller {
-	return &Puller{
-		workerCnt: 5,
-		uidCache:  map[string]string{},
-		uidLock:   &sync.Mutex{},
+func NewPuller(remoteUri string, localDir string) (*Puller, error) {
+	if _, err := os.Stat(localDir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("local directory `%s` does not exist: %v", localDir, err)
 	}
+
+	return &Puller{
+		RemoteUri:  remoteUri,
+		LocalDir:   localDir,
+		workingDir: filepath.Join(localDir, ".objinsync"),
+		workerCnt:  5,
+		uidCache:   map[string]string{},
+		uidLock:    &sync.Mutex{},
+	}, nil
 }

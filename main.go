@@ -96,24 +96,22 @@ func main() {
 			localDir := args[1]
 			interval := time.Second * 5
 
-			_, err := os.Stat(localDir)
+			puller, err := sync.NewPuller(remoteUri, localDir)
 			if err != nil {
-				log.Fatal(localDir, " is not a valid dir: ", err)
+				log.Fatal(err)
 			}
-
-			puller := sync.NewPuller()
 			if FlagExclude != nil {
 				puller.AddExcludePatterns(FlagExclude)
 			}
 			if !FlagScratch {
-				puller.PopulateChecksum(localDir)
+				puller.PopulateChecksum()
 			}
 
 			pull := func() {
 				start := time.Now()
 				l.Info("Pull started.")
 
-				errMsg := puller.Pull(remoteUri, localDir)
+				errMsg := puller.Pull()
 				if errMsg != "" {
 					sentry.CaptureMessage(errMsg)
 					sentry.Flush(time.Second * 5)
