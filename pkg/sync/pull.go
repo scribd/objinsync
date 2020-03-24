@@ -307,8 +307,16 @@ func (self *Puller) Pull() string {
 			return fmt.Sprintf("Failed to detect AWS region: %v", err)
 		}
 	}
+	endpointURL := os.Getenv("AWS_ENDPOINT_URL")
 
-	svc := s3.New(sess, aws.NewConfig().WithRegion(region))
+	s3Config := &aws.Config{
+		Endpoint:         aws.String(endpointURL),
+		Region:           aws.String(region),
+		DisableSSL:       aws.Bool(true),
+		S3ForcePathStyle: aws.Bool(true),
+	}
+	svc := s3.New(sess, s3Config)
+
 	downloader := s3manager.NewDownloaderWithClient(svc)
 
 	if err := self.SetupWorkingDir(); err != nil {
