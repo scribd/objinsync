@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -151,9 +150,11 @@ func (self *Puller) downloadHandler(task DownloadTask, downloader GenericDownloa
 	}
 
 	// create file
-	tmpfile, err := ioutil.TempFile(self.workingDir, filepath.Base(task.LocalPath))
+	tmpfileName := fmt.Sprintf("%x", md5.Sum([]byte(task.LocalPath)))
+	tmpfilePath := filepath.Join(self.workingDir, tmpfileName)
+	tmpfile, err := os.OpenFile(tmpfilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
-		self.errMsgQueue <- fmt.Sprintf("Failed to create file for download: %v", err)
+		self.errMsgQueue <- fmt.Sprintf("Failed to create temp file for download: %v", err)
 		return
 	}
 	defer tmpfile.Close()
@@ -164,7 +165,7 @@ func (self *Puller) downloadHandler(task DownloadTask, downloader GenericDownloa
 	})
 
 	// use rename to make file update atomic
-	err = os.Rename(tmpfile.Name(), task.LocalPath)
+	err = os.Rename(tmpfilePath, task.LocalPath)
 	if err != nil {
 		self.errMsgQueue <- fmt.Sprintf("Failed to replace file %s for download: %v", task.LocalPath, err)
 		return
