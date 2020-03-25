@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"runtime/debug"
+	"strconv"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -19,11 +20,12 @@ import (
 )
 
 var (
-	InitialRunFinished atomic.Bool
-	FlagRunOnce        bool
-	FlagStatusAddr     = ":8087"
-	FlagExclude        []string
-	FlagScratch        bool
+	InitialRunFinished  atomic.Bool
+	FlagRunOnce         bool
+	FlagStatusAddr      = ":8087"
+	FlagExclude         []string
+	FlagScratch         bool
+	FlagDefaultFileMode = "0666"
 
 	metricsSyncTime = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "objinsync",
@@ -106,6 +108,13 @@ func main() {
 			if !FlagScratch {
 				puller.PopulateChecksum()
 			}
+			if FlagDefaultFileMode != "" {
+				mode, err := strconv.ParseInt(FlagDefaultFileMode, 8, 64)
+				if err != nil {
+					log.Fatal("invalid default file mode", err)
+				}
+				puller.SetDefaultFileMode(os.FileMode(mode))
+			}
 
 			pull := func() {
 				start := time.Now()
@@ -158,6 +167,8 @@ func main() {
 		false,
 		"skip checksums calculation and override all files during the initial sync",
 	)
+	pullCmd.PersistentFlags().StringVarP(
+		&FlagDefaultFileMode, "default-file-mode", "m", "0666", "default mode to use for creating local file")
 
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.Execute()

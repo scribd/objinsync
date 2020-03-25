@@ -103,6 +103,7 @@ type Puller struct {
 	LocalDir  string
 
 	workingDir  string
+	defaultMode os.FileMode
 	exclude     []string
 	workerCnt   int
 	uidCache    map[string]string
@@ -152,7 +153,7 @@ func (self *Puller) downloadHandler(task DownloadTask, downloader GenericDownloa
 	// create file
 	tmpfileName := fmt.Sprintf("%x", md5.Sum([]byte(task.LocalPath)))
 	tmpfilePath := filepath.Join(self.workingDir, tmpfileName)
-	tmpfile, err := os.OpenFile(tmpfilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	tmpfile, err := os.OpenFile(tmpfilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, self.defaultMode)
 	if err != nil {
 		self.errMsgQueue <- fmt.Sprintf("Failed to create temp file for download: %v", err)
 		return
@@ -447,17 +448,22 @@ func (self *Puller) PopulateChecksum() {
 	}
 }
 
+func (self *Puller) SetDefaultFileMode(mode os.FileMode) {
+	self.defaultMode = mode
+}
+
 func NewPuller(remoteUri string, localDir string) (*Puller, error) {
 	if _, err := os.Stat(localDir); os.IsNotExist(err) {
 		return nil, fmt.Errorf("local directory `%s` does not exist: %v", localDir, err)
 	}
 
 	return &Puller{
-		RemoteUri:  remoteUri,
-		LocalDir:   localDir,
-		workingDir: filepath.Join(localDir, ".objinsync"),
-		workerCnt:  5,
-		uidCache:   map[string]string{},
-		uidLock:    &sync.Mutex{},
+		RemoteUri:   remoteUri,
+		LocalDir:    localDir,
+		workingDir:  filepath.Join(localDir, ".objinsync"),
+		defaultMode: 0666,
+		workerCnt:   5,
+		uidCache:    map[string]string{},
+		uidLock:     &sync.Mutex{},
 	}, nil
 }
