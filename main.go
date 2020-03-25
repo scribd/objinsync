@@ -26,6 +26,8 @@ var (
 	FlagExclude         []string
 	FlagScratch         bool
 	FlagDefaultFileMode = "0664"
+	FlagS3Endpoint      = ""
+	FlagDisableSSL      = false
 
 	metricsSyncTime = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "objinsync",
@@ -102,6 +104,8 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
+			puller.DisableSSL = FlagDisableSSL
+			puller.S3Endpoint = FlagS3Endpoint
 			if FlagExclude != nil {
 				puller.AddExcludePatterns(FlagExclude)
 			}
@@ -156,6 +160,8 @@ func main() {
 
 	pullCmd.PersistentFlags().BoolVarP(
 		&FlagRunOnce, "once", "o", false, "run action once and then exit")
+	pullCmd.PersistentFlags().BoolVarP(
+		&FlagDisableSSL, "disable-ssl", "", false, "disable SSL for object storage connection")
 	pullCmd.PersistentFlags().StringVarP(
 		&FlagStatusAddr, "status-addr", "s", ":8087", "binding address for status endpoint")
 	pullCmd.PersistentFlags().StringSliceVarP(
@@ -169,6 +175,8 @@ func main() {
 	)
 	pullCmd.PersistentFlags().StringVarP(
 		&FlagDefaultFileMode, "default-file-mode", "m", "0664", "default mode to use for creating local file")
+	pullCmd.PersistentFlags().StringVarP(
+		&FlagS3Endpoint, "s3-endpoint", "", "", "override endpoint to use for remote object store (e.g. minio)")
 
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.Execute()
