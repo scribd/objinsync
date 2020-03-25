@@ -25,7 +25,7 @@ var (
 	FlagStatusAddr      = ":8087"
 	FlagExclude         []string
 	FlagScratch         bool
-	FlagDefaultFileMode = "0666"
+	FlagDefaultFileMode = "0664"
 
 	metricsSyncTime = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "objinsync",
@@ -168,7 +168,7 @@ func main() {
 		"skip checksums calculation and override all files during the initial sync",
 	)
 	pullCmd.PersistentFlags().StringVarP(
-		&FlagDefaultFileMode, "default-file-mode", "m", "0666", "default mode to use for creating local file")
+		&FlagDefaultFileMode, "default-file-mode", "m", "0664", "default mode to use for creating local file")
 
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.Execute()

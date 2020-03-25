@@ -461,7 +461,7 @@ func NewPuller(remoteUri string, localDir string) (*Puller, error) {
 		RemoteUri:   remoteUri,
 		LocalDir:    localDir,
 		workingDir:  filepath.Join(localDir, ".objinsync"),
-		defaultMode: 0666,
+		defaultMode: 0664,
 		workerCnt:   5,
 		uidCache:    map[string]string{},
 		uidLock:     &sync.Mutex{},
