@@ -99,8 +99,10 @@ func uidFromLocalPath(localPath string) (string, error) {
 }
 
 type Puller struct {
-	RemoteUri string
-	LocalDir  string
+	RemoteUri  string
+	LocalDir   string
+	DisableSSL bool
+	S3Endpoint string
 
 	workingDir  string
 	defaultMode os.FileMode
@@ -307,13 +309,14 @@ func (self *Puller) Pull() string {
 			return fmt.Sprintf("Failed to detect AWS region: %v", err)
 		}
 	}
-	endpointURL := os.Getenv("AWS_ENDPOINT_URL")
 
-	s3Config := &aws.Config{
-		Endpoint:         aws.String(endpointURL),
-		Region:           aws.String(region),
-		DisableSSL:       aws.Bool(true),
-		S3ForcePathStyle: aws.Bool(true),
+	s3Config := &aws.Config{Region: aws.String(region)}
+	if self.DisableSSL {
+		s3Config.DisableSSL = aws.Bool(true)
+	}
+	if self.S3Endpoint != "" {
+		s3Config.Endpoint = aws.String(self.S3Endpoint)
+		s3Config.S3ForcePathStyle = aws.Bool(true)
 	}
 	svc := s3.New(sess, s3Config)
 
@@ -468,6 +471,7 @@ func NewPuller(remoteUri string, localDir string) (*Puller, error) {
 	return &Puller{
 		RemoteUri:   remoteUri,
 		LocalDir:    localDir,
+		DisableSSL:  false,
 		workingDir:  filepath.Join(localDir, ".objinsync"),
 		defaultMode: 0664,
 		workerCnt:   5,
