@@ -27,6 +27,9 @@ You can also run objinsync in pull once mode, which behaves just like `aws s3 sy
 objinsync pull --once s3://bucket/keyprefix ./localdir
 ```
 
+To use with [Minio](https://docs.min.io/) instead of S3, you can set
+`--s3-endpoint` and `--disable-ssl` flags for `pull` command as you see fit.
+
 
 Installation
 ------------
