@@ -44,6 +44,8 @@ Simply download the prebuilt single binary from [release page](https://github.co
 go get github.com/scribd/objinsync
 ```
 
+An officially maintained public docker image is available at https://hub.docker.com/repository/docker/scribdinc/objinsync.
+
 
 Development
 ------------
