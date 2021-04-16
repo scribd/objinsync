@@ -28,6 +28,7 @@ var (
 	FlagDefaultFileMode = "0664"
 	FlagS3Endpoint      = ""
 	FlagDisableSSL      = false
+	FlagPullInterval    = time.Second * 5
 
 	metricsSyncTime = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "objinsync",
@@ -98,7 +99,7 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			remoteUri := args[0]
 			localDir := args[1]
-			interval := time.Second * 5
+			interval := FlagPullInterval
 
 			puller, err := sync.NewPuller(remoteUri, localDir)
 			if err != nil {
@@ -177,6 +178,8 @@ func main() {
 		&FlagDefaultFileMode, "default-file-mode", "m", "0664", "default mode to use for creating local file")
 	pullCmd.PersistentFlags().StringVarP(
 		&FlagS3Endpoint, "s3-endpoint", "", "", "override endpoint to use for remote object store (e.g. minio)")
+	pullCmd.PersistentFlags().DurationVarP(
+		&FlagPullInterval, "interval", "i", time.Second * 5, "Interval between remote storage pulls")
 
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.Execute()

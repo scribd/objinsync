@@ -30,6 +30,12 @@ objinsync pull --once s3://bucket/keyprefix ./localdir
 To use with [Minio](https://docs.min.io/) instead of S3, you can set
 `--s3-endpoint` and `--disable-ssl` flags for `pull` command as you see fit.
 
+The `-i` or `--interval` flags allows to configure the pull time interval, which is 5 seconds by default:
+
+```bash
+objinsync pull --interval 20s s3://bucket/keyprefix ./localdir
+```
+
 ---
 
 Enable debug logs by setting the `DEBUG` environment variable `DEBUG=1 objinsync pull ...`
