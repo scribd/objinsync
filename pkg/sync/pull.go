@@ -383,6 +383,12 @@ func (self *Puller) Pull() string {
 		// delete files not exist in remote source
 		for f, _ := range self.filesToDelete {
 			os.Remove(f)
+			uidKey, err := uidKeyFromLocalPath(self.LocalDir, f)
+			if err == nil {
+				self.uidLock.Lock()
+				delete(self.uidCache, uidKey)
+				self.uidLock.Unlock()
+			}
 		}
 
 		return pullErrMsg
