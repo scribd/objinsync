@@ -1,4 +1,5 @@
 FROM golang:1.16.3 as build
+LABEL org.opencontainers.image.source https://github.com/scribd/objinsync
 ADD . /app
 WORKDIR /app
 

@@ -26,6 +26,10 @@ jobs:
     - name: Run test
       run: make test
 
+    - name: Test Docker build
+      run: docker build --rm -t ghcr.io/scribd/objinsync:latest .
+
+
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/')
@@ -53,3 +57,10 @@ jobs:
         args: release --rm-dist
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and publish docker image
+      run: |
+        VERSION=${GITHUB_REF##*/}
+        echo ${SCRIBDBOT_GH_CONTAINER_REGISTRY_TOKEN} | docker login ghcr.io -u scribdbot --password-stdin
+        docker build --rm -t "ghcr.io/scribd/objinsync:${VERSION}" .
+        docker push "ghcr.io/scribd/objinsync:${VERSION}"
