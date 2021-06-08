@@ -65,8 +65,9 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build and publish docker image
-      run: |
-        VERSION=${GITHUB_REF##*/}
-        docker build --rm -t "ghcr.io/scribd/objinsync:${VERSION}" .
-        docker push "ghcr.io/scribd/objinsync:${VERSION}"
+    # FIXME: SCRIBDBOT_GH_CONTAINER_REGISTRY_TOKEN doesn't have write access to publish package
+    # - name: Build and publish docker image
+    #   run: |
+    #     VERSION=${GITHUB_REF##*/}
+    #     docker build --rm -t "ghcr.io/scribd/objinsync:${VERSION}" .
+    #     docker push "ghcr.io/scribd/objinsync:${VERSION}"
