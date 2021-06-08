@@ -37,6 +37,13 @@ jobs:
     needs: test
     steps:
 
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v1
+      with:
+        registry: ghcr.io
+        username: scribdbot
+        password: ${{ secrets.SCRIBDBOT_GH_CONTAINER_REGISTRY_TOKEN }}
+
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
 
@@ -61,6 +68,5 @@ jobs:
     - name: Build and publish docker image
       run: |
         VERSION=${GITHUB_REF##*/}
-        echo ${SCRIBDBOT_GH_CONTAINER_REGISTRY_TOKEN} | docker login ghcr.io -u scribdbot --password-stdin
         docker build --rm -t "ghcr.io/scribd/objinsync:${VERSION}" .
         docker push "ghcr.io/scribd/objinsync:${VERSION}"
