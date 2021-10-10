@@ -15,7 +15,7 @@ objinsync pull --exclude '**/__pycache__/**' s3://bucket/keyprefix ./localdir
 ```
 
 When running in daemon mode (without `--once` flag), a health check endpoint is
-served at `:8087/health` and a prometheus metrics endponit is served at
+served at `:8087/health` and a prometheus metrics endpoint is served at
 `:8087/metrics`. You can use `--status-addr` to override the binding address.
 
 Objinsync also comes with builtin Sentry integration. To enable it, set the
