@@ -27,6 +27,7 @@ var (
 	FlagScratch         bool
 	FlagDefaultFileMode = "0664"
 	FlagS3Endpoint      = ""
+	FlagS3Credential    = ""
 	FlagDisableSSL      = false
 	FlagPullInterval    = time.Second * 5
 
@@ -107,6 +108,7 @@ func main() {
 			}
 			puller.DisableSSL = FlagDisableSSL
 			puller.S3Endpoint = FlagS3Endpoint
+			puller.Credential = FlagS3Credential
 			if FlagExclude != nil {
 				puller.AddExcludePatterns(FlagExclude)
 			}
@@ -179,7 +181,10 @@ func main() {
 	pullCmd.PersistentFlags().StringVarP(
 		&FlagS3Endpoint, "s3-endpoint", "", "", "override endpoint to use for remote object store (e.g. minio)")
 	pullCmd.PersistentFlags().DurationVarP(
-		&FlagPullInterval, "interval", "i", time.Second * 5, "Interval between remote storage pulls")
+		&FlagPullInterval, "interval", "i", time.Second*5, "Interval between remote storage pulls")
+
+	pullCmd.PersistentFlags().StringVarP(
+		&FlagS3Credential, "credential", "", "", "ACCESSKEYID/SECRETACCESSKEY for minio server, parameter format like: ak,sk. which use comma separated")
 
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.Execute()

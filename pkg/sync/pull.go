@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -103,6 +104,7 @@ type Puller struct {
 	LocalDir   string
 	DisableSSL bool
 	S3Endpoint string
+	Credential string
 
 	workingDir  string
 	defaultMode os.FileMode
@@ -318,6 +320,12 @@ func (self *Puller) Pull() string {
 		s3Config.Endpoint = aws.String(self.S3Endpoint)
 		s3Config.S3ForcePathStyle = aws.Bool(true)
 	}
+	if self.Credential != "" {
+		var keys = strings.Split(self.Credential, ",")
+		s3Config.Credentials = credentials.NewStaticCredentials(keys[0], keys[1], "")
+		l.Infow("Set the credentials", "AK=", keys[0], "SK=", keys[1])
+	}
+
 	svc := s3.New(sess, s3Config)
 
 	downloader := s3manager.NewDownloaderWithClient(svc)
