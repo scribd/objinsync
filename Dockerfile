@@ -5,7 +5,7 @@ WORKDIR /app
 
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags '-extldflags "-static"'
 
-FROM alpine:3.10.1
+FROM alpine:3.14
 
 RUN addgroup --gid 1000 app && \
     adduser --system --uid 1000 --ingroup app app
