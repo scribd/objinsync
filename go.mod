@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/aws/aws-sdk-go v1.45.28
-	github.com/bmatcuk/doublestar v4.6.0
+	github.com/bmatcuk/doublestar v1.3.4
 	github.com/getsentry/sentry-go v0.25.0
 	github.com/prometheus/client_golang v1.17.0
 	github.com/spf13/cobra v1.7.0
